@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://json.schemastore.org/databricks-asset-bundles.json
+
+common_libraries: &common_libraries
+  libraries:
+    - whl: ../dist/*.whl
+    - requirements: ${workspace.file_path}/requirements/requirements_prod.txt
+    - requirements: ${workspace.file_path}/requirements/requirements_seco_test.txt
+
+variables:
+  dspe_job_compute_policy_id:
+    lookup:
+      cluster_policy: "DSPE job compute"
+
+resources:
+  jobs:
+    feedbecky_msd_notes_pipeline:
+      name: template_pipeline
+      max_concurrent_runs: 1
+      tags:
+        team: via
+        env: ${bundle.target}
+
+      schedule:
+        # Scheduled to run at 00:30 on 2nd day of the month and runs every 2 days after
+        quartz_cron_expression: 00 30 00 2/2 * ?
+        timezone_id: Europe/Amsterdam
+        pause_status: PAUSED
+
+      tasks:
+        - task_key: template_job
+          job_cluster_key: job_cluster
+          spark_python_task:
+            python_file: ../src/feedbecky/entrypoints/main.py
+            parameters:
+              - "--usecase"
+              - "template"
+              - "--component"
+              - "ComponentTemplate"
+          <<: *common_libraries
+
+
+       # You TYPICALLY do not need to change anything / much here besides the items marked with a comment
+      job_clusters:
+        - job_cluster_key: job_cluster
+          new_cluster:
+            spark_version: 17.3.x-scala2.13  # This can be changed based on the project requirements/preferences
+            node_type_id: Standard_DS4_v2  # This can be changed based on the project requirements/preferences
+            num_workers: 2
+            policy_id: ${var.dspe_job_compute_policy_id}
+            data_security_mode: USER_ISOLATION
+            azure_attributes:
+              availability: SPOT_WITH_FALLBACK_AZURE
+            spark_env_vars:
+              PIP_INDEX_URL: https://p-nexus-3.development.nl.eu.abnamro.com:8443/repository/python-group/simple
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+              PIP_EXTRA_INDEX_URL: https://p-nexus-3.development.nl.eu.abnamro.com:8443/repository/python-releases/simple
+              ENV: ${bundle.target}
